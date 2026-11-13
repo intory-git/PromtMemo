@@ -1,0 +1,5 @@
+pywebview>=6.2,<7
+Pillow>=10.0,<13
+PyYAML>=6.0.1,<7
+python-dotenv>=1.0,<2
+requests>=2.31,<3

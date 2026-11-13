@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Секреты
+.env
+
+# Данные приложения
+prompts/
+data/
+.trash/
+.backups/
+.conflicts/
+
+# Локальный WebDAV для проверок
+.davserver/
+
+# Сборка
+build/
+dist/
+*.bak
+
+# Архивы релиза
+release/

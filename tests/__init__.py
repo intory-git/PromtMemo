@@ -1,0 +1,1 @@
+"""Тесты Prompt Manager."""

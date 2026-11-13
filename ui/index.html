@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--
+    script-src 'unsafe-eval' нужен pywebview: его мост строит функции api
+    через new Function (js/api.js). Без этого window.pywebview.api остаётся пустым.
+    'self' по-прежнему запрещает внешние скрипты, а inline-скриптов в UI нет вовсе.
+  -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Prompt Manager</title>
+  <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <button id="btn-sidebar" class="icon-btn" type="button" title="Панель папок (Ctrl+B)" aria-label="Панель папок">
+          <i class="fa-solid fa-bars" aria-hidden="true"></i>
+        </button>
+        <span class="logo" aria-hidden="true">PM</span>
+        <div class="brand-text">
+          <h1>Prompt Manager</h1>
+          <p id="data-root" class="muted small">Каталог данных не определён</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span id="stats" class="stats"></span>
+        <button id="btn-sync" class="btn icon" type="button" title="Синхронизировать с WebDAV" aria-label="Синхронизировать с WebDAV">
+          <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
+        </button>
+        <button id="btn-test-dav" class="btn icon" type="button" title="Проверить подключение WebDAV" aria-label="Проверить подключение WebDAV">
+          <i class="fa-solid fa-plug" aria-hidden="true"></i>
+        </button>
+        <button id="btn-new-prompt" class="btn primary" type="button" title="Новый промт (Ctrl+N)">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i><span>Промт</span>
+        </button>
+        <button id="btn-reload" class="btn icon" type="button" title="Обновить (F5)" aria-label="Обновить">
+          <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+        </button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside id="sidebar" class="sidebar" aria-label="Папки с промтами">
+        <div class="sidebar-head">
+          <span class="sidebar-title">Папки</span>
+          <button id="btn-collapse" class="icon-btn small" type="button" title="Свернуть (Ctrl+B)" aria-label="Свернуть панель">
+            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="sidebar-search">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input id="search-input" type="search" placeholder="Поиск по промтам…" autocomplete="off" spellcheck="false" aria-label="Поиск по промтам">
+          <button id="search-clear" class="icon-btn small" type="button" title="Очистить поиск (Esc)" aria-label="Очистить поиск" hidden>
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </div>
+        <nav id="folder-tree" class="folder-tree" role="tree" aria-label="Дерево папок"></nav>
+        <div class="tag-cloud-box" id="tag-cloud-box" hidden>
+          <div class="tag-cloud-head">
+            <span><i class="fa-solid fa-tags" aria-hidden="true"></i> Теги</span>
+            <button id="tags-clear" class="link-btn" type="button">сбросить</button>
+          </div>
+          <div id="tag-cloud" class="tag-cloud"></div>
+        </div>
+        <div class="sidebar-foot">
+          <button id="btn-expand" class="sidebar-expand icon-btn" type="button" title="Развернуть (Ctrl+B)" aria-label="Развернуть панель">
+            <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+          </button>
+          <p class="muted small sidebar-hint">Папка появляется, когда в неё сохранён промт.</p>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="content-head">
+          <nav id="breadcrumbs" class="breadcrumbs" aria-label="Текущая папка"></nav>
+          <div class="content-tools">
+            <span id="folder-count" class="muted small"></span>
+            <label class="sort-control" title="Сортировка">
+              <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
+              <select id="sort-select" aria-label="Сортировка">
+                <option value="updated-desc">Новые сначала</option>
+                <option value="updated-asc">Старые сначала</option>
+                <option value="title-asc">Заголовок А→Я</option>
+                <option value="title-desc">Заголовок Я→А</option>
+                <option value="created-desc">По дате создания</option>
+                <option value="created-asc">По дате создания (обратно)</option>
+              </select>
+            </label>
+            <button id="btn-reset-filters" class="btn ghost small" type="button" hidden>Сбросить фильтры</button>
+          </div>
+        </div>
+
+        <div id="banner" class="banner" role="alert" hidden>
+          <div>
+            <strong id="banner-title">Ошибка</strong>
+            <p id="banner-text" class="small"></p>
+            <ul id="banner-list" class="banner-list small"></ul>
+          </div>
+          <button id="banner-close" class="banner-close" type="button" aria-label="Закрыть">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <section id="empty" class="empty" hidden>
+          <h2 id="empty-title">Промтов пока нет</h2>
+          <p id="empty-text">Создайте первый промт — появится папка и вариант.</p>
+          <p class="muted small">Индекс: <code id="empty-index">prompts/index.json</code></p>
+          <div class="empty-actions">
+            <button id="btn-empty-new" class="btn primary" type="button">
+              <i class="fa-solid fa-plus" aria-hidden="true"></i><span>Промт</span>
+            </button>
+            <button id="btn-empty-reset" class="btn" type="button" hidden>
+              <i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>Сбросить фильтры</span>
+            </button>
+          </div>
+        </section>
+
+        <section id="list" class="list" aria-live="polite" hidden></section>
+
+        <div id="loading" class="loading">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Загрузка…</span>
+        </div>
+      </main>
+    </div>
+
+    <footer class="statusbar">
+      <span id="status">Готово</span>
+      <span id="version" class="muted"></span>
+    </footer>
+  </div>
+
+  <div id="modal-root" class="modal-root" hidden>
+    <div class="modal-backdrop" data-close="1"></div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <header class="modal-head">
+        <h2 id="modal-title"></h2>
+        <button class="icon-btn" type="button" data-close="1" aria-label="Закрыть">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
+      </header>
+      <form id="modal-form" class="modal-body" novalidate>
+        <p id="modal-message" class="modal-message"></p>
+        <div id="modal-fields" class="modal-fields"></div>
+      </form>
+      <footer class="modal-foot">
+        <span id="modal-error" class="form-error" role="alert"></span>
+        <button id="modal-cancel" class="btn" type="button" data-close="1">Отмена</button>
+        <button id="modal-submit" class="btn primary" type="submit" form="modal-form">Сохранить</button>
+      </footer>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
